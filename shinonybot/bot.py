@@ -11,6 +11,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
 from telegram.helpers import escape_markdown
 
+
 if __package__ in (None, ""):
     import sys
     from importlib import import_module
@@ -23,6 +24,9 @@ if __package__ in (None, ""):
     ).CharacterGenerator  # type: ignore[attr-defined]
 else:
     from .generator import CharacterGenerator
+=======
+from .generator import CharacterGenerator
+
 
 logger = logging.getLogger(__name__)
 
