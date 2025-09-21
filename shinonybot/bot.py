@@ -39,9 +39,7 @@ async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     formatted = generator.format_sheet(sheet)
     escaped = escape_markdown(formatted, version=2)
     await update.message.reply_text(
-        f"```
-{escaped}
-```",
+        f"```\n{escaped}\n```",
         parse_mode=ParseMode.MARKDOWN_V2,
     )
 
