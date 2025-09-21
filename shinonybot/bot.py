@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+
 import html
+
 import logging
 import os
 from typing import Optional
@@ -10,6 +12,8 @@ from typing import Optional
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
+
+from telegram.helpers import escape_markdown
 
 if __package__ in (None, ""):
     import sys
@@ -23,6 +27,7 @@ if __package__ in (None, ""):
     ).CharacterGenerator  # type: ignore[attr-defined]
 else:
     from .generator import CharacterGenerator
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,7 @@ async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         f"<pre>{escaped}</pre>",
         parse_mode=ParseMode.HTML,
+
     )
 
 
