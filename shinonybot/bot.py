@@ -11,7 +11,22 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
 from telegram.helpers import escape_markdown
 
+
+if __package__ in (None, ""):
+    import sys
+    from importlib import import_module
+    from pathlib import Path
+
+    package_dir = Path(__file__).resolve().parent
+    sys.path.append(str(package_dir.parent))
+    CharacterGenerator = import_module(
+        f"{package_dir.name}.generator"
+    ).CharacterGenerator  # type: ignore[attr-defined]
+else:
+    from .generator import CharacterGenerator
+=======
 from .generator import CharacterGenerator
+
 
 logger = logging.getLogger(__name__)
 
