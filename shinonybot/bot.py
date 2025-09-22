@@ -12,8 +12,51 @@ from typing import Optional
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
-
 from telegram.helpers import escape_markdown
+
+
+def _patch_python_telegram_bot() -> None:
+    """Work around python-telegram-bot <21 bug on Python 3.13."""
+
+    try:  # pragma: no cover - depends on optional dependency internals
+        from telegram.ext import _applicationbuilder as _appbuilder
+        from telegram.ext import _updater as _updater_module
+    except Exception:  # library missing or layout changed
+        return
+
+    updater_cls = getattr(_updater_module, "Updater", None)
+    if updater_cls is None:
+        return
+
+    slots = getattr(updater_cls, "__slots__", ())
+    if not isinstance(slots, tuple):
+        return
+
+    # python-telegram-bot 20.x forgets to declare this slot, which became
+    # fatal on Python 3.13 because attribute assignment now errors out.
+    missing_slot = "_Updater__polling_cleanup_cb"
+    if missing_slot in slots:
+        return
+
+    patched_updater = type(  # type: ignore[valid-type]
+        "Updater",
+        (updater_cls,),
+        {
+            "__slots__": (missing_slot,),
+            "__module__": updater_cls.__module__,
+        },
+    )
+
+    _updater_module.Updater = patched_updater
+    if hasattr(_appbuilder, "Updater"):
+        _appbuilder.Updater = patched_updater
+
+    builder_cls = getattr(_appbuilder, "ApplicationBuilder", None)
+    if builder_cls is not None and hasattr(builder_cls, "_updater_cls"):
+        builder_cls._updater_cls = patched_updater  # type: ignore[attr-defined]
+
+
+_patch_python_telegram_bot()
 
 if __package__ in (None, ""):
     import sys
@@ -57,7 +100,6 @@ async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         f"<pre>{escaped}</pre>",
         parse_mode=ParseMode.HTML,
-
     )
 
 
