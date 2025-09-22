@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+
 import html
+
 import logging
 import os
 from typing import Optional
@@ -10,6 +12,7 @@ from typing import Optional
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.helpers import escape_markdown
 
 
 def _patch_python_telegram_bot() -> None:
@@ -67,6 +70,7 @@ if __package__ in (None, ""):
     ).CharacterGenerator  # type: ignore[attr-defined]
 else:
     from .generator import CharacterGenerator
+
 
 logger = logging.getLogger(__name__)
 
