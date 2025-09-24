@@ -44,7 +44,6 @@ HTML_SECTIONS: Tuple[Tuple[str, str], ...] = (
     ("skills", "Навыки"),
     ("gear", "Снаряжение"),
     ("lifestyle", "Образ жизни"),
-    ("transport", "Транспорт"),
     ("rank", "Ранг"),
 )
 
@@ -218,7 +217,6 @@ class CharacterSheet:
     features: List[Feat]
     problems: List[Feat]
     augmentations: List[Feat]
-    augmentation_roll: int
     skills: List[Skill]
     rank: Rank
     armor: Optional[InventoryItem]
@@ -226,7 +224,6 @@ class CharacterSheet:
     backup_weapon: Optional[InventoryItem]
     support_items: List[InventoryItem]
     lifestyle: Optional[InventoryItem]
-    transport: Optional[InventoryItem]
 
 
 class CharacterGenerator:
@@ -293,15 +290,13 @@ class CharacterGenerator:
         clothing = self.rng.choice(self.db.feats_by_type("Одежда"))
         features = self._pick_unique(self.db.feats_by_type("Особые черты"), 2)
         problems = self._pick_unique(self.db.feats_by_type("Личностные проблемы"), 2)
-        augmentation_roll, augmentations = self._roll_augmentations()
+        augmentations = self._roll_augmentations()
         skills = self._pick_unique(self.db.skills, 6)
         rank = self._starting_rank()
         armor = self._pick_one(self.db.inventory_by_type("Броня"))
         primary_weapon, backup_weapon = self._choose_weapons(skills)
         support_items = self._choose_support_items(skills)
         lifestyle = self._pick_one(self.db.inventory_by_type("Образ жизни"))
-        transport = self._pick_one(self.db.inventory_by_type("Транспорт"))
-
         gender_code: Gender = "Ж" if gender == "female" else "М"
         return CharacterSheet(
             name=self._normalize_text(name_entry.name),
@@ -315,7 +310,6 @@ class CharacterGenerator:
             features=features,
             problems=problems,
             augmentations=augmentations,
-            augmentation_roll=augmentation_roll,
             skills=skills,
             rank=rank,
             armor=armor,
@@ -323,7 +317,6 @@ class CharacterGenerator:
             backup_weapon=backup_weapon,
             support_items=support_items,
             lifestyle=lifestyle,
-            transport=transport,
         )
 
     def _build_sections(self, sheet: CharacterSheet) -> Dict[str, Sequence[str]]:
@@ -343,8 +336,7 @@ class CharacterGenerator:
         ]
         personality_lines = [self._describe_feat(feat) for feat in sheet.problems]
         augmentation_lines = [
-            f"Бросок d6 на аугментации: {sheet.augmentation_roll}",
-            *[self._describe_feat(feat) for feat in sheet.augmentations],
+            self._describe_feat(feat) for feat in sheet.augmentations
         ]
         skill_lines = [self._describe_skill(skill) for skill in sheet.skills]
         gear_lines = [
@@ -365,7 +357,6 @@ class CharacterGenerator:
                 )
             )
         lifestyle_line = self._describe_item(sheet.lifestyle)
-        transport_line = self._describe_item(sheet.transport)
         rank_line = self._normalize_text(
             "{name} (бонус: {benefit}, опыт: {xp})".format(
                 name=self._normalize_text(sheet.rank.name),
@@ -383,7 +374,6 @@ class CharacterGenerator:
             "skills": skill_lines,
             "gear": gear_lines,
             "lifestyle": [lifestyle_line],
-            "transport": [transport_line],
             "rank": [rank_line],
         }
 
@@ -431,7 +421,6 @@ class CharacterGenerator:
             ("Навыки", "skills"),
             ("Снаряжение", "gear"),
             ("Образ жизни", "lifestyle"),
-            ("Транспорт", "transport"),
             ("Ранг", "rank"),
         ]
 
@@ -520,7 +509,7 @@ class CharacterGenerator:
             feud = self.rng.choice(feud_table)
         return background, feud
 
-    def _roll_augmentations(self) -> Tuple[int, List[Feat]]:
+    def _roll_augmentations(self) -> List[Feat]:
         roll = self.rng.randint(1, 6)
         plan: Dict[str, int]
         if roll == 1:
@@ -539,7 +528,7 @@ class CharacterGenerator:
             if not feats:
                 continue
             augmentations.extend(self._pick_unique(feats, count))
-        return roll, augmentations
+        return augmentations
 
     def _pick_unique(self, pool: Sequence[T], count: int) -> List[T]:
         if not pool or count <= 0:
