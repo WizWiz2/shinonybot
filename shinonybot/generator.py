@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import html
 import random
 import textwrap
 from dataclasses import dataclass
+from string import Template
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .database import Database, Feat, InventoryItem, Rank, Skill
@@ -17,6 +19,176 @@ MELEE_SKILLS = {
     "Карате",
     "Некоде",
 }
+
+
+HTML_SECTIONS: Tuple[Tuple[str, str], ...] = (
+    ("biography", "Биография"),
+    ("motivation", "Мотивация"),
+    ("appearance", "Внешность"),
+    ("personality", "Черты характера"),
+    ("augmentations", "Аугментации"),
+    ("skills", "Навыки"),
+    ("gear", "Снаряжение"),
+    ("lifestyle", "Образ жизни"),
+    ("transport", "Транспорт"),
+    ("rank", "Ранг"),
+)
+
+
+HTML_TEMPLATE = Template(
+    textwrap.dedent(
+        """
+        <!DOCTYPE html>
+        <html lang="ru">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Shinobi Dossier</title>
+            <style>
+              :root {
+                color-scheme: dark;
+                --bg: #04020c;
+                --panel: rgba(25, 17, 48, 0.85);
+                --accent: #7df9ff;
+                --accent-2: #ff00ff;
+                --text: #e4f1ff;
+                --muted: #8ca1c1;
+                --shadow: 0 0 30px rgba(125, 249, 255, 0.25);
+              }
+              * {
+                box-sizing: border-box;
+              }
+              body {
+                margin: 0;
+                padding: 24px 12px 48px;
+                font-family: "Orbitron", "Russo One", "Segoe UI", sans-serif;
+                background: radial-gradient(circle at top, #120a28, #03010a 55%, #010006);
+                color: var(--text);
+              }
+              .dossier {
+                max-width: 720px;
+                margin: 0 auto;
+                background: var(--panel);
+                border: 2px solid var(--accent);
+                border-radius: 18px;
+                padding: 24px 20px;
+                box-shadow: var(--shadow);
+                backdrop-filter: blur(6px);
+              }
+              header {
+                text-align: center;
+                margin-bottom: 24px;
+              }
+              header h1 {
+                font-size: clamp(1.6rem, 3vw, 2.6rem);
+                letter-spacing: 0.28em;
+                margin: 0 0 6px;
+                text-transform: uppercase;
+                color: var(--accent);
+                text-shadow: 0 0 16px rgba(125, 249, 255, 0.6);
+              }
+              header p {
+                margin: 0;
+                font-size: 0.95rem;
+                color: var(--muted);
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
+              }
+              .info-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 12px;
+                margin-bottom: 24px;
+              }
+              .info-row {
+                background: rgba(12, 9, 26, 0.9);
+                border: 1px solid rgba(125, 249, 255, 0.35);
+                border-radius: 12px;
+                padding: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                box-shadow: 0 0 12px rgba(255, 0, 255, 0.18);
+              }
+              .label {
+                font-size: 0.7rem;
+                text-transform: uppercase;
+                letter-spacing: 0.22em;
+                color: var(--muted);
+              }
+              .value {
+                font-size: 1.05rem;
+                letter-spacing: 0.02em;
+              }
+              .block {
+                margin-bottom: 22px;
+                padding: 16px 14px;
+                border: 1px solid rgba(255, 0, 255, 0.25);
+                border-radius: 12px;
+                background: rgba(10, 6, 24, 0.9);
+                position: relative;
+                overflow: hidden;
+              }
+              .block::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                border: 1px solid rgba(125, 249, 255, 0.15);
+                border-radius: 12px;
+                pointer-events: none;
+              }
+              .block h2 {
+                margin: 0 0 12px;
+                font-size: 1rem;
+                letter-spacing: 0.32em;
+                text-transform: uppercase;
+                color: var(--accent-2);
+              }
+              .block ul {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+              }
+              .block li {
+                display: flex;
+                gap: 10px;
+                align-items: flex-start;
+                font-size: 0.95rem;
+                line-height: 1.45;
+              }
+              .bullet {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                margin-top: 6px;
+                background: linear-gradient(135deg, var(--accent), var(--accent-2));
+                box-shadow: 0 0 10px rgba(125, 249, 255, 0.9);
+                flex-shrink: 0;
+              }
+              @media (prefers-reduced-motion: reduce) {
+                * {
+                  transition: none !important;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <main class="dossier">
+              <header>
+                <h1>SHINOBI DOSSIER</h1>
+                <p>Cyberpunk операционный файл</p>
+              </header>
+              <section class="info-grid">$info_cards</section>
+              $sections
+            </main>
+          </body>
+        </html>
+        """
+    )
+)
 
 
 @dataclass
@@ -90,32 +262,11 @@ class CharacterGenerator:
             transport=transport,
         )
 
-    def format_sheet(self, sheet: CharacterSheet) -> str:
-        width = 74
-        border_top = "╔" + "═" * (width - 2) + "╗"
-        border_mid = "╠" + "═" * (width - 2) + "╣"
-        border_sep = "╟" + "─" * (width - 2) + "╢"
-        border_bottom = "╚" + "═" * (width - 2) + "╝"
+    def _build_sections(self, sheet: CharacterSheet) -> Dict[str, Sequence[str]]:
+        """Prepare formatted text snippets for different sheet sections."""
 
-        def format_line(label: str, value: str) -> str:
-            label = f"{label}:"
-            return f"║ {label:<18} {value:<{width - 23}} ║"
-
-        def wrap_block(title: str, text: str) -> str:
-            wrapped = textwrap.fill(text, width=width - 4)
-            return f"║ {title:<{width - 4}} ║\n" + "\n".join(
-                f"║ {line:<{width - 4}} ║" for line in wrapped.splitlines()
-            )
-
-        def format_list(title: str, rows: Sequence[str]) -> str:
-            lines = [f"• {row}" for row in rows]
-            wrapped_lines = []
-            for line in lines:
-                wrapped_lines.extend(
-                    textwrap.wrap(line, width=width - 4) or [""]
-                )
-            body = "\n".join(f"║ {line:<{width - 4}} ║" for line in wrapped_lines)
-            return f"║ {title:<{width - 4}} ║\n{body}"
+        def normalize(text: str) -> str:
+            return " ".join(text.split()) if text else text
 
         def describe_feat(feat: Optional[Feat]) -> str:
             if not feat:
@@ -144,20 +295,6 @@ class CharacterGenerator:
                 parts.append(f"¥{item.price:,}".replace(",", " "))
             return " — ".join(parts)
 
-        header = [
-            border_top,
-            "║ SHINOBI // CYBERPUNK DOSSIER".ljust(width - 1) + "║",
-            border_mid,
-            format_line("Имя", sheet.name),
-            format_line("Пол", "Женский" if sheet.gender == "Ж" else "Мужской"),
-            format_line("Значение", sheet.name_meaning or "—"),
-            format_line("Концепт", sheet.concept.name),
-            border_sep,
-        ]
-
-        def normalize(text: str) -> str:
-            return " ".join(text.split()) if text else text
-
         background_text = normalize(describe_feat(sheet.background))
         if sheet.feud:
             feud_text = sheet.feud.description or sheet.feud.name
@@ -185,32 +322,131 @@ class CharacterGenerator:
                 gear_lines.append(f"Поддержка {idx}: {describe_item(item)}")
         lifestyle_line = describe_item(sheet.lifestyle)
         transport_line = describe_item(sheet.transport)
-        rank_line = f"{sheet.rank.name} (бонус: {sheet.rank.benefit or '—'}, опыт: {sheet.rank.xp_needed or '0'})"
+        rank_line = (
+            f"{sheet.rank.name} (бонус: {sheet.rank.benefit or '—'}, "
+            f"опыт: {sheet.rank.xp_needed or '0'})"
+        )
+
+        return {
+            "biography": [background_text],
+            "motivation": [motivation_text],
+            "appearance": appearance_lines,
+            "personality": personality_lines,
+            "augmentations": augmentation_lines,
+            "skills": skill_lines,
+            "gear": gear_lines,
+            "lifestyle": [lifestyle_line],
+            "transport": [transport_line],
+            "rank": [rank_line],
+        }
+
+    def format_sheet(self, sheet: CharacterSheet) -> str:
+        width = 60
+        border_top = "╔" + "═" * (width - 2) + "╗"
+        border_mid = "╠" + "═" * (width - 2) + "╣"
+        border_sep = "╟" + "─" * (width - 2) + "╢"
+        border_bottom = "╚" + "═" * (width - 2) + "╝"
+
+        def format_line(label: str, value: str) -> str:
+            label = f"{label}:"
+            return f"║ {label:<18} {value:<{width - 23}} ║"
+
+        def format_list(title: str, rows: Sequence[str]) -> str:
+            lines = [f"• {row}" for row in rows]
+            wrapped_lines = []
+            for line in lines:
+                wrapped_lines.extend(
+                    textwrap.wrap(line, width=width - 4) or [""]
+                )
+            body = "\n".join(f"║ {line:<{width - 4}} ║" for line in wrapped_lines)
+            return f"║ {title:<{width - 4}} ║\n{body}"
+
+        header = [
+            border_top,
+            "║ SHINOBI // CYBERPUNK DOSSIER".ljust(width - 1) + "║",
+            border_mid,
+            format_line("Имя", sheet.name),
+            format_line("Пол", "Женский" if sheet.gender == "Ж" else "Мужской"),
+            format_line("Значение", sheet.name_meaning or "—"),
+            format_line("Концепт", sheet.concept.name),
+            border_sep,
+        ]
+
+        sections = self._build_sections(sheet)
 
         blocks = [
-            format_list("Биография", [background_text]),
+            format_list("Биография", sections["biography"]),
             border_sep,
-            format_list("Мотивация", [motivation_text]),
+            format_list("Мотивация", sections["motivation"]),
             border_sep,
-            format_list("Внешность", appearance_lines),
+            format_list("Внешность", sections["appearance"]),
             border_sep,
-            format_list("Черты характера", personality_lines),
+            format_list("Черты характера", sections["personality"]),
             border_sep,
-            format_list("Аугментации", augmentation_lines),
+            format_list("Аугментации", sections["augmentations"]),
             border_sep,
-            format_list("Навыки", skill_lines),
+            format_list("Навыки", sections["skills"]),
             border_sep,
-            format_list("Снаряжение", gear_lines),
+            format_list("Снаряжение", sections["gear"]),
             border_sep,
-            format_list("Образ жизни", [lifestyle_line]),
+            format_list("Образ жизни", sections["lifestyle"]),
             border_sep,
-            format_list("Транспорт", [transport_line]),
+            format_list("Транспорт", sections["transport"]),
             border_sep,
-            format_list("Ранг", [rank_line]),
+            format_list("Ранг", sections["rank"]),
             border_bottom,
         ]
 
         return "\n".join(header + blocks)
+
+    def format_sheet_html(self, sheet: CharacterSheet) -> str:
+        """Return a cyberpunk-styled responsive HTML representation."""
+
+        sections = self._build_sections(sheet)
+        info_cards = "".join(
+            self._render_html_info_row(label, value)
+            for label, value in self._html_info_rows(sheet)
+        )
+        section_markup = "".join(
+            self._render_html_section(title, sections[key])
+            for key, title in HTML_SECTIONS
+        )
+        return HTML_TEMPLATE.substitute(info_cards=info_cards, sections=section_markup)
+
+    def _html_info_rows(self, sheet: CharacterSheet) -> Sequence[Tuple[str, str]]:
+        gender_label = "Женский" if sheet.gender == "Ж" else "Мужской"
+        return [
+            ("Имя", sheet.name or "—"),
+            ("Пол", gender_label),
+            ("Значение имени", sheet.name_meaning or "—"),
+            ("Концепт", sheet.concept.name or "—"),
+        ]
+
+    @staticmethod
+    def _render_html_info_row(label: str, value: str) -> str:
+        safe_label = html.escape(label)
+        safe_value = html.escape(value or "—")
+        return (
+            "<div class=\"info-row\">"
+            f"<span class=\"label\">{safe_label}</span>"
+            f"<span class=\"value\">{safe_value}</span>"
+            "</div>"
+        )
+
+    @staticmethod
+    def _render_html_section(title: str, items: Sequence[str]) -> str:
+        normalized_items = [item or "—" for item in items] or ["—"]
+        list_items = "".join(
+            "<li><span class=\"bullet\"></span><span>"
+            f"{html.escape(item)}</span></li>"
+            for item in normalized_items
+        )
+        return (
+            "<section class=\"block\">"
+            f"<h2>{html.escape(title)}</h2>"
+            f"<ul>{list_items}</ul>"
+            "</section>"
+        )
 
     def _choose_name(self) -> Tuple[Feat, str]:
         male_names = self.db.feats_by_type("Мужские имена")

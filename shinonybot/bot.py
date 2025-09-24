@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 
-import html
 from io import BytesIO
 
 import logging
@@ -11,10 +10,7 @@ import os
 from typing import Optional
 
 from telegram import Update
-from telegram.constants import ParseMode
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
-
-from telegram.helpers import escape_markdown
 
 if __package__ in (None, ""):
     import sys
@@ -49,9 +45,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-TELEGRAM_MESSAGE_LIMIT = 4096
-
-
 async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Generate a new character sheet and send it to the user."""
     if not update.message:
@@ -59,23 +52,15 @@ async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     generator = CharacterGenerator(base_path=context.bot_data.get("base_path", "."))
     sheet = generator.generate()
-    formatted = generator.format_sheet(sheet)
-    escaped = html.escape(formatted)
-    if len(escaped) <= TELEGRAM_MESSAGE_LIMIT:
-        await update.message.reply_text(
-            f"<pre>{escaped}</pre>",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    buffer = BytesIO(formatted.encode("utf-8"))
-    buffer.name = "shinobi_character.txt"
+    html_payload = generator.format_sheet_html(sheet)
+    buffer = BytesIO(html_payload.encode("utf-8"))
+    buffer.name = "shinobi_character.html"
     await update.message.reply_document(
         document=buffer,
         filename=buffer.name,
         caption=(
-            "Готово! Сообщение оказалось слишком большим, поэтому я отправил лист "
-            "персонажа файлом."
+            "Готово! Лист персонажа — в приложенном HTML-файле с неоновой "
+            "киберпанк-версткой."
         ),
     )
 
