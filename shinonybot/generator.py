@@ -7,9 +7,12 @@ import random
 import textwrap
 from dataclasses import dataclass
 from string import Template
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Tuple, TypeVar
 
 from .database import Database, Feat, InventoryItem, Rank, Skill
+
+T = TypeVar("T")
+Gender = Literal["М", "Ж"]
 
 MELEE_SKILLS = {
     "Айкидо",
@@ -19,6 +22,17 @@ MELEE_SKILLS = {
     "Карате",
     "Некоде",
 }
+
+
+SUPPORT_SKILL_CATEGORIES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("Киберпространство", ("Кибердека", "Программа")),
+    ("Контрбезопасность", ("Охранное оборудование",)),
+    ("Технологии", ("Техника",)),
+    ("Медицина", ("Медицинские товары и услуги",)),
+    ("Взрывчатка", ("Взрывчатка",)),
+)
+
+DEFAULT_SUPPORT_TYPES: Tuple[str, ...] = ("Техника", "Компьютер")
 
 
 HTML_SECTIONS: Tuple[Tuple[str, str], ...] = (
@@ -194,7 +208,7 @@ HTML_TEMPLATE = Template(
 @dataclass
 class CharacterSheet:
     name: str
-    gender: str
+    gender: Gender
     name_meaning: str
     concept: Feat
     background: Feat
@@ -222,6 +236,55 @@ class CharacterGenerator:
         self.rng = rng or random.Random()
         self.db = Database.load(base_path)
 
+    @staticmethod
+    def _collapse_whitespace(text: str) -> str:
+        return " ".join(text.split())
+
+    @classmethod
+    def _normalize_text(cls, text: Optional[str], fallback: str = "—") -> str:
+        if text is None:
+            return fallback
+        collapsed = cls._collapse_whitespace(text)
+        return collapsed or fallback
+
+    @classmethod
+    def _describe_feat(cls, feat: Optional[Feat]) -> str:
+        if not feat:
+            return "—"
+        description = cls._collapse_whitespace(feat.description or "")
+        if description in {"", "-", "—"}:
+            description = ""
+        name = cls._collapse_whitespace(feat.name or "")
+        if not description:
+            return cls._normalize_text(name)
+        if not name or name.lower().startswith("таблица"):
+            return cls._normalize_text(description)
+        if description.lower().startswith(name.lower()):
+            return cls._normalize_text(description)
+        return cls._normalize_text(f"{name} — {description}")
+
+    @classmethod
+    def _describe_item(cls, item: Optional[InventoryItem]) -> str:
+        if not item:
+            return "—"
+        parts = [cls._normalize_text(item.name)]
+        description = cls._collapse_whitespace(item.description or "")
+        if description and description not in {"-", "—"}:
+            parts.append(description)
+        if item.price is not None:
+            parts.append(f"¥{item.price:,}".replace(",", " "))
+        return cls._normalize_text(" — ".join(parts))
+
+    @classmethod
+    def _describe_skill(cls, skill: Skill) -> str:
+        name = cls._normalize_text(skill.name)
+        description = cls._normalize_text(skill.description)
+        if description == "—":
+            return name
+        if description.lower().startswith(name.lower()):
+            return description
+        return f"{name} — {description}"
+
     def generate(self) -> CharacterSheet:
         name_entry, gender = self._choose_name()
         concept = self.rng.choice(self.db.feats_by_type("Концепт"))
@@ -239,10 +302,11 @@ class CharacterGenerator:
         lifestyle = self._pick_one(self.db.inventory_by_type("Образ жизни"))
         transport = self._pick_one(self.db.inventory_by_type("Транспорт"))
 
+        gender_code: Gender = "Ж" if gender == "female" else "М"
         return CharacterSheet(
-            name=name_entry.name,
-            gender="Ж" if gender == "female" else "М",
-            name_meaning=name_entry.description,
+            name=self._normalize_text(name_entry.name),
+            gender=gender_code,
+            name_meaning=self._normalize_text(name_entry.description),
             concept=concept,
             background=background_entry,
             feud=feud_entry,
@@ -265,66 +329,49 @@ class CharacterGenerator:
     def _build_sections(self, sheet: CharacterSheet) -> Dict[str, Sequence[str]]:
         """Prepare formatted text snippets for different sheet sections."""
 
-        def normalize(text: str) -> str:
-            return " ".join(text.split()) if text else text
-
-        def describe_feat(feat: Optional[Feat]) -> str:
-            if not feat:
-                return "—"
-            desc = feat.description.strip() if feat.description else ""
-            if desc in {"-", "—"}:
-                desc = ""
-            if desc:
-                name_clean = feat.name.strip()
-                if not name_clean or name_clean.lower().startswith("таблица"):
-                    return desc
-                if desc.lower().startswith(name_clean.lower()):
-                    return desc
-                return f"{name_clean} — {desc}"
-            return feat.name.strip()
-
-        def describe_item(item: Optional[InventoryItem]) -> str:
-            if not item:
-                return "—"
-            parts = [normalize(item.name)]
-            if item.description:
-                description = normalize(item.description)
-                if description not in {"-", "—"}:
-                    parts.append(description)
-            if item.price is not None:
-                parts.append(f"¥{item.price:,}".replace(",", " "))
-            return " — ".join(parts)
-
-        background_text = normalize(describe_feat(sheet.background))
+        background_text = self._describe_feat(sheet.background)
         if sheet.feud:
             feud_text = sheet.feud.description or sheet.feud.name
-            background_text += f"; Вражда: {normalize(feud_text)}"
-        motivation_text = normalize(describe_feat(sheet.motivation))
+            background_text = (
+                f"{background_text}; Вражда: {self._normalize_text(feud_text)}"
+            )
+
+        motivation_text = self._describe_feat(sheet.motivation)
         appearance_lines = [
-            normalize(describe_feat(sheet.clothing)),
-            *[normalize(describe_feat(feat)) for feat in sheet.features],
+            self._describe_feat(sheet.clothing),
+            *[self._describe_feat(feat) for feat in sheet.features],
         ]
-        personality_lines = [normalize(describe_feat(feat)) for feat in sheet.problems]
+        personality_lines = [self._describe_feat(feat) for feat in sheet.problems]
         augmentation_lines = [
             f"Бросок d6 на аугментации: {sheet.augmentation_roll}",
-            *[normalize(describe_feat(feat)) for feat in sheet.augmentations],
+            *[self._describe_feat(feat) for feat in sheet.augmentations],
         ]
-        skill_lines = [
-            normalize(f"{skill.name} — {skill.description}") for skill in sheet.skills
-        ]
+        skill_lines = [self._describe_skill(skill) for skill in sheet.skills]
         gear_lines = [
-            f"Броня: {describe_item(sheet.armor)}",
-            f"Основное оружие: {describe_item(sheet.primary_weapon)}",
-            f"Запасное оружие: {describe_item(sheet.backup_weapon)}",
+            self._normalize_text(
+                f"Броня: {self._describe_item(sheet.armor)}"
+            ),
+            self._normalize_text(
+                f"Основное оружие: {self._describe_item(sheet.primary_weapon)}"
+            ),
+            self._normalize_text(
+                f"Запасное оружие: {self._describe_item(sheet.backup_weapon)}"
+            ),
         ]
-        if sheet.support_items:
-            for idx, item in enumerate(sheet.support_items, start=1):
-                gear_lines.append(f"Поддержка {idx}: {describe_item(item)}")
-        lifestyle_line = describe_item(sheet.lifestyle)
-        transport_line = describe_item(sheet.transport)
-        rank_line = (
-            f"{sheet.rank.name} (бонус: {sheet.rank.benefit or '—'}, "
-            f"опыт: {sheet.rank.xp_needed or '0'})"
+        for idx, item in enumerate(sheet.support_items, start=1):
+            gear_lines.append(
+                self._normalize_text(
+                    f"Поддержка {idx}: {self._describe_item(item)}"
+                )
+            )
+        lifestyle_line = self._describe_item(sheet.lifestyle)
+        transport_line = self._describe_item(sheet.transport)
+        rank_line = self._normalize_text(
+            "{name} (бонус: {benefit}, опыт: {xp})".format(
+                name=self._normalize_text(sheet.rank.name),
+                benefit=self._normalize_text(sheet.rank.benefit),
+                xp=self._normalize_text(sheet.rank.xp_needed, fallback="0"),
+            )
         )
 
         return {
@@ -349,7 +396,8 @@ class CharacterGenerator:
 
         def format_line(label: str, value: str) -> str:
             label = f"{label}:"
-            return f"║ {label:<18} {value:<{width - 23}} ║"
+            normalized = self._normalize_text(value)
+            return f"║ {label:<18} {normalized:<{width - 23}} ║"
 
         def format_list(title: str, rows: Sequence[str]) -> str:
             lines = [f"• {row}" for row in rows]
@@ -374,28 +422,25 @@ class CharacterGenerator:
 
         sections = self._build_sections(sheet)
 
-        blocks = [
-            format_list("Биография", sections["biography"]),
-            border_sep,
-            format_list("Мотивация", sections["motivation"]),
-            border_sep,
-            format_list("Внешность", sections["appearance"]),
-            border_sep,
-            format_list("Черты характера", sections["personality"]),
-            border_sep,
-            format_list("Аугментации", sections["augmentations"]),
-            border_sep,
-            format_list("Навыки", sections["skills"]),
-            border_sep,
-            format_list("Снаряжение", sections["gear"]),
-            border_sep,
-            format_list("Образ жизни", sections["lifestyle"]),
-            border_sep,
-            format_list("Транспорт", sections["transport"]),
-            border_sep,
-            format_list("Ранг", sections["rank"]),
-            border_bottom,
+        block_order = [
+            ("Биография", "biography"),
+            ("Мотивация", "motivation"),
+            ("Внешность", "appearance"),
+            ("Черты характера", "personality"),
+            ("Аугментации", "augmentations"),
+            ("Навыки", "skills"),
+            ("Снаряжение", "gear"),
+            ("Образ жизни", "lifestyle"),
+            ("Транспорт", "transport"),
+            ("Ранг", "rank"),
         ]
+
+        blocks: List[str] = []
+        for idx, (title, key) in enumerate(block_order):
+            blocks.append(format_list(title, sections[key]))
+            if idx < len(block_order) - 1:
+                blocks.append(border_sep)
+        blocks.append(border_bottom)
 
         return "\n".join(header + blocks)
 
@@ -416,10 +461,10 @@ class CharacterGenerator:
     def _html_info_rows(self, sheet: CharacterSheet) -> Sequence[Tuple[str, str]]:
         gender_label = "Женский" if sheet.gender == "Ж" else "Мужской"
         return [
-            ("Имя", sheet.name or "—"),
+            ("Имя", self._normalize_text(sheet.name)),
             ("Пол", gender_label),
-            ("Значение имени", sheet.name_meaning or "—"),
-            ("Концепт", sheet.concept.name or "—"),
+            ("Значение имени", self._normalize_text(sheet.name_meaning)),
+            ("Концепт", self._normalize_text(sheet.concept.name)),
         ]
 
     @staticmethod
@@ -433,9 +478,9 @@ class CharacterGenerator:
             "</div>"
         )
 
-    @staticmethod
-    def _render_html_section(title: str, items: Sequence[str]) -> str:
-        normalized_items = [item or "—" for item in items] or ["—"]
+    @classmethod
+    def _render_html_section(cls, title: str, items: Sequence[str]) -> str:
+        normalized_items = [cls._normalize_text(item) for item in items] or ["—"]
         list_items = "".join(
             "<li><span class=\"bullet\"></span><span>"
             f"{html.escape(item)}</span></li>"
@@ -496,17 +541,18 @@ class CharacterGenerator:
             augmentations.extend(self._pick_unique(feats, count))
         return roll, augmentations
 
-    def _pick_unique(self, pool: Sequence, count: int) -> List:
-        if not pool:
+    def _pick_unique(self, pool: Sequence[T], count: int) -> List[T]:
+        if not pool or count <= 0:
             return []
-        if len(pool) <= count:
-            return list(self.rng.sample(list(pool), len(pool)))
-        return list(self.rng.sample(list(pool), count))
+        population = list(pool)
+        sample_size = min(count, len(population))
+        return list(self.rng.sample(population, sample_size))
 
-    def _pick_one(self, pool: Sequence) -> Optional:
-        if not pool:
+    def _pick_one(self, pool: Sequence[T]) -> Optional[T]:
+        population = list(pool)
+        if not population:
             return None
-        return self.rng.choice(list(pool))
+        return self.rng.choice(population)
 
     def _choose_weapons(self, skills: Sequence[Skill]) -> Tuple[Optional[InventoryItem], Optional[InventoryItem]]:
         skill_names = {skill.name for skill in skills}
@@ -529,33 +575,22 @@ class CharacterGenerator:
 
     def _choose_support_items(self, skills: Sequence[Skill]) -> List[InventoryItem]:
         skill_names = {skill.name for skill in skills}
-        support: List[InventoryItem] = []
-        categories: List[Tuple[str, str]] = []
-        if "Киберпространство" in skill_names:
-            categories.extend([
-                ("Кибердека", "Основная кибердека"),
-                ("Программа", "Программное обеспечение"),
-            ])
-        if "Контрбезопасность" in skill_names:
-            categories.append(("Охранное оборудование", "Инструменты безопасности"))
-        if "Технологии" in skill_names:
-            categories.append(("Техника", "Технический набор"))
-        if "Медицина" in skill_names:
-            categories.append(("Медицинские товары и услуги", "Медицинские средства"))
-        if "Взрывчатка" in skill_names:
-            categories.append(("Взрывчатка", "Взрывчатка"))
+        categories: List[str] = []
+
+        def append_types(*type_names: str) -> None:
+            for type_name in type_names:
+                if type_name not in categories:
+                    categories.append(type_name)
+
+        for skill_name, type_names in SUPPORT_SKILL_CATEGORIES:
+            if skill_name in skill_names:
+                append_types(*type_names)
+
         if not categories:
-            categories.extend(
-                [
-                    ("Техника", "Техника"),
-                    ("Компьютер", "Компьютер"),
-                ]
-            )
-        seen_types = set()
-        for type_name, _ in categories:
-            if type_name in seen_types:
-                continue
-            seen_types.add(type_name)
+            append_types(*DEFAULT_SUPPORT_TYPES)
+
+        support: List[InventoryItem] = []
+        for type_name in categories:
             item = self._pick_one(self.db.inventory_by_type(type_name))
             if item:
                 support.append(item)
