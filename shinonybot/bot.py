@@ -4,6 +4,7 @@ from __future__ import annotations
 
 
 import html
+from io import BytesIO
 
 import logging
 import os
@@ -48,16 +49,34 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+TELEGRAM_MESSAGE_LIMIT = 4096
+
+
 async def generate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Generate a new character sheet and send it to the user."""
+    if not update.message:
+        return
+
     generator = CharacterGenerator(base_path=context.bot_data.get("base_path", "."))
     sheet = generator.generate()
     formatted = generator.format_sheet(sheet)
     escaped = html.escape(formatted)
-    await update.message.reply_text(
-        f"<pre>{escaped}</pre>",
-        parse_mode=ParseMode.HTML,
+    if len(escaped) <= TELEGRAM_MESSAGE_LIMIT:
+        await update.message.reply_text(
+            f"<pre>{escaped}</pre>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
+    buffer = BytesIO(formatted.encode("utf-8"))
+    buffer.name = "shinobi_character.txt"
+    await update.message.reply_document(
+        document=buffer,
+        filename=buffer.name,
+        caption=(
+            "Готово! Сообщение оказалось слишком большим, поэтому я отправил лист "
+            "персонажа файлом."
+        ),
     )
 
 
